@@ -1,0 +1,89 @@
+version: "3.9"
+
+volumes:
+  strixer:
+
+services:
+  db:
+    image: strixer-db
+    build: ./env/db
+    container_name: db
+    environment:
+      MYSQL_DATABASE: strixer_local
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_USER: mysqluser
+      MYSQL_PASSWORD: mysqlpass
+      TZ: Asia/Tokyo
+    volumes:
+      - ./env/db/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+    ports:
+      - "3315:3306"
+
+  frontend:
+    image: strixer-frontend
+    build:
+      context: .
+      dockerfile: ./env/frontend/Dockerfile
+    container_name: frontend
+    working_dir: "/src/strixer-frontend"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    tty: true
+    stdin_open: true
+    volumes:
+    - ./src/strixer-frontend:/src/strixer-frontend
+    - ./env/webserver/etc/certs:/etc/nginx/ssl
+    command: "npm run dev"
+    ports:
+      - 3000:3000
+
+  backend:
+    image: strixer-backend
+    build:
+      context: .
+      dockerfile: ./env/backend/Dockerfile
+    tty: true
+    container_name: backend
+    environment:
+      APP_MODE: local
+      DB_USER: mysqluser
+      DB_PASSWORD: mysqlpass
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: strixer
+      DB_NAME_TEST: strixer_test
+      DB_LOC: Asia%2FTokyo
+    volumes:
+      - ./src/strixer-backend:/src/strixer-backend
+      - ./env/webserver/etc/certs:/etc/nginx/ssl
+    ports:
+      - 9000:9000
+    depends_on:
+      - db
+    command: /bin/sh -c "cargo watch -x 'run' -w src"
+
+  webserver:
+    image: strixer-webserver
+    build:
+      context: ./
+      dockerfile: ./env/webserver/Dockerfile
+    container_name: webserver
+    ports:
+      - 80:80
+      - 443:443
+    environment:
+      - TZ=Asia/Tokyo
+    volumes:
+      - ./env/webserver/nginx.conf:/etc/nginx/nginx.conf
+      - ./env/webserver/etc/certs:/etc/nginx/ssl
+    depends_on:
+      - backend
+
+networks:
+  strixer:
+    external: true
+
+# networks:
+#   default:
+#     name: strixer-networks
+    
